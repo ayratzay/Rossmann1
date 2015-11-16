@@ -7,7 +7,6 @@ from sklearn.grid_search import RandomizedSearchCV
 from scipy.stats import randint, uniform
 from time import time
 
-
 def process_date(df):
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
     df['Year'] = df['Date'].apply(lambda x: x.year)
@@ -46,7 +45,34 @@ def get_dummies(t):
     return t
 
 
+def one_hot_encoder(t):
+    # dow_df = pd.get_dummies(t['DayOfWeek'], prefix='DOW')
+    # sh_df = pd.get_dummies(t['StateHoliday'], prefix='SH')
+    # t = t.drop(['DayOfWeek', 'StateHoliday'], axis = 1)
+    # t = pd.concat([t, dow_df, sh_df], axis =1)
+    return t
+
+
+def set_weeks(t):
+    t['NWeek'] = t[[u'Year', u'Week']].apply(lambda row: (row['Year'] - 2013) * 52 + row['Week'], axis=1)
+    return t
+
+def window_array(lowest, highest, window_width):
+    temp_range = range(lowest, highest + 1)
+    while len(temp_range):
+        yield temp_range[0:window_width]
+        temp_range = temp_range[window_width:]
+
+
+aa = window_array(9, 10, 10)
+aa.next()
+
+# cross_validate same year
+# cross_validate same periods
+
 train = read_train_df()
+train = set_weeks(train)
+
 train = get_dummies(train)
 # plt.plot(train.groupby(['Year', 'Month', 'Week']).sum()['Sales'])
 
@@ -79,8 +105,8 @@ clf.fit(X_train, y_train)
 mse = mean_squared_error(y_test, clf.predict(X_test))
 print("MSE: %.4f" % mse)
 
-test = read_train_df()  # test df has first column Id
-
+test = read_test_df()  # test df has first column Id
+test = set_weeks(test)
 
 
 # store = pd.read_csv("data/store.csv")
