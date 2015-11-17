@@ -6,6 +6,7 @@ from sklearn import ensemble
 from sklearn.grid_search import RandomizedSearchCV
 from scipy.stats import randint, uniform
 from time import time
+import numpy as np
 
 def process_date(df):
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
@@ -16,14 +17,29 @@ def process_date(df):
     return df
 
 
+def stateHolidayColumnHandler(val):
+    if val == '0':
+        return 0
+    elif val == 0:
+        return 0
+    elif val == 'a':
+        return 1
+    elif val == 'b':
+        return 2
+    elif val == 'c':
+        return 3
+    else:
+        return val
+
+
 def data_cleaning(df):
-    df['StateHoliday'] = df['StateHoliday'].apply(lambda x: '0' if x == 0 else x)
-    df['DayOfWeek'] = df['DayOfWeek'].apply(lambda x: str(x))
+    df['StateHoliday'] = df['StateHoliday'].apply(stateHolidayColumnHandler)
+    # df['DayOfWeek'] = df['DayOfWeek'].apply(lambda x: str(x))
     return df
 
 
 def read_train_df():
-    t = pd.read_csv("data/train.csv")
+    t = pd.read_csv("data/train.csv", low_memory=False)
     t = process_date(t)
     t = data_cleaning(t)
     # t['Date'] = (pd.to_datetime('2015-08-01') - t['Date']).astype('timedelta64[D]')
@@ -64,14 +80,31 @@ def window_array(lowest, highest, window_width):
         temp_range = temp_range[window_width:]
 
 
-aa = window_array(9, 10, 10)
-aa.next()
-
-# cross_validate same year
-# cross_validate same periods
-
 train = read_train_df()
 train = set_weeks(train)
+
+np_train = train.as_matrix(columns=train.columns)
+
+
+def cross_validate(arr, times):
+    mmin = min(np_train[:, 11])
+    mmax = max(np_train[:, 11])
+    length = int((mmax - mmin) / times)
+    for wl in window_array(mmin, mmax, length):
+        test_mask = np.in1d(np_train[:, 11], wl)
+        X_train =  np_train[test_mask].shape
+        y_train =  np_train[~test_mask].shape
+
+
+
+
+
+param_dist = {"max_depth": randint(3, 7),
+              "max_features": uniform(loc = 0.1, scale = 0.9),
+              "min_samples_split": randint(2, 11),
+              "min_samples_leaf": randint(1, 11),
+              'learning_rate': uniform(loc = 0.01, scale = 0.09)}
+
 
 train = get_dummies(train)
 # plt.plot(train.groupby(['Year', 'Month', 'Week']).sum()['Sales'])
@@ -82,12 +115,6 @@ X_train = train.as_matrix(columns=[u'Store', u'Open', u'Promo', u'SchoolHoliday'
                                    u'DOW_7', u'SH_0', u'SH_a', u'SH_b', u'SH_c'])
 y_train = train.as_matrix(columns=['Sales']).ravel()
 
-
-param_dist = {"max_depth": randint(3, 7),
-              "max_features": uniform(loc = 0.1, scale = 0.9),
-              "min_samples_split": randint(2, 11),
-              "min_samples_leaf": randint(1, 11),
-              'learning_rate': uniform(loc = 0.01, scale = 0.09)}
 
 clf = ensemble.GradientBoostingRegressor(n_estimators=1000) # more is better
 
