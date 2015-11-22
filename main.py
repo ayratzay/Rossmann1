@@ -15,7 +15,7 @@ def process_date(df):
     return df
 
 
-def stateHolidayColumnHandler(val):
+def categorical_value_handler(val):
     if val == '0':
         return 0
     elif val == 0:
@@ -26,13 +26,14 @@ def stateHolidayColumnHandler(val):
         return 2
     elif val == 'c':
         return 3
+    elif val == 'd':
+        return 4
     else:
         return val
 
 
 def data_cleaning(df):
-    df['StateHoliday'] = df['StateHoliday'].apply(stateHolidayColumnHandler)
-    # df['DayOfWeek'] = df['DayOfWeek'].apply(lambda x: str(x))
+    df['StateHoliday'] = df['StateHoliday'].apply(categorical_value_handler)
     return df
 
 
@@ -41,11 +42,16 @@ def data_cleaning(df):
 #I will drop all rows using mask train['Open'] == 0 and 'Open' column
 #Also we should add to preprocess of test data same logic,
 #for mask test['Open'] == 0 test['Sales'] = 0
+#
+# Do we need assume 0 for this
+# column Open in test data file for store 622 is blank
+# Is the store closed meaning open=0? is it the right assumption ID=480 1336 2192 3048 4760 5616 6472 7328 8184 9040 10752
 
 def drop_closed_days_rows(t):
     t = t[t['Open'] != 0]
     t = t.drop(['Open'], axis = 1)
     return t
+
 
 def read_train_df():
     t = pd.read_csv("data/train.csv", low_memory=False)
@@ -124,9 +130,99 @@ def cross_validate(x, y, nweeks, cv_number, estimator = False):
     print("RMSPE: %.4f" % np.mean(RMSPE))
 
 
+def str_month_to_int(str_val):
+    if str_val == 'Jan':
+        return 1
+    elif str_val == 'Feb':
+        return 2
+    elif str_val == 'Apr':
+        return 3
+    elif str_val == 'Mar':
+        return 4
+    elif str_val == 'May':
+        return 5
+    elif str_val == 'Jun':
+        return 6
+    elif str_val == 'Jul':
+        return 7
+    elif str_val == 'Aug':
+        return 8
+    elif str_val == 'Sept':
+        return 9
+    elif str_val == 'Oct':
+        return 10
+    elif str_val == 'Nov':
+        return 11
+    elif str_val == 'Dec':
+        return 12
+    else:
+        return str_val
+
+
 train = read_train_df()
 train = set_weeks(train)
 
+
+store = pd.read_csv("data/store.csv")
+store['StoreType'] = store['StoreType'].apply(categorical_value_handler)
+store['Assortment'] = store['Assortment'].apply(categorical_value_handler)
+train['Promo2'] = 0
+train['StoreType'] = 0
+train['Assortment'] = 0
+train['CompetitionDistance'] = 0
+
+for i in store.columns:
+    print (i, store[i].unique()[:10])
+
+
+for row in store.itertuples():
+    id =  row[1]
+    print (id)
+    mask = (train['Store'] == id)
+
+    storeType =  row[2]
+    assort =  row[3]
+    train.loc[mask, 'StoreType'] = storeType
+    train.loc[mask, 'Assortment'] = assort
+
+    comp_distance = row[4]
+    comp_month = row[5]
+    comp_year = row[6]
+
+    train.loc[mask, 'Assortment'] = assort
+
+
+    train.loc[mask, 'CompetitionDistance'] = comp_distance
+
+
+
+    has_promo2 = row[7]
+    promo2week = row[8]
+    promo2year = row[9]
+    interval = row[10]
+
+    if has_promo2:
+        if promo2year > 2012:
+            mask1 = (train['Store'] == id) & (train['Year'] == promo2year) & (train['Week'] == promo2week)
+            mask2 = (train['Store'] == id) & (train['Year'] > promo2year)
+            mask = mask1 & mask2
+
+        for m in interval.split(','):
+            pm = str_month_to_int(m)
+            train.loc[(mask) & (train['Month'] == pm), 'Promo2'] = 1
+
+
+
+
+
+
+    # Promo2 periods  #convert to promo2 column in train
+    # competitors #competitor since months to today #has_competitor for each day{0,1} #distance {far, near, close}
+
+
+aa = store.itertuples()
+row = next(aa)
+print (row)
 
 col_x = np.delete(train.columns, [2, 3, 10])  # 2 : Sales, 3 : Customers, 10 : NWeek
 
@@ -156,59 +252,3 @@ cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimato
 
 
 
-train_d = get_dummies(train)
-
-np_x = train_d.as_matrix(columns=[u'Store', u'Promo', u'SchoolHoliday', u'Year', u'Month',
-                                   u'Week', u'DOW_1', u'DOW_2', u'DOW_3', u'DOW_4', u'DOW_5', u'DOW_6',
-                                   u'DOW_7', u'SH_0', u'SH_1', u'SH_2', u'SH_3'])
-np_y = train_d.as_matrix(columns=['Sales']).ravel()
-np_weekInd = train_d.as_matrix(columns=['NWeek'])
-
-clf = ensemble.GradientBoostingRegressor(n_estimators=100)
-param_dist = {"max_depth": randint(3, 7),
-              "max_features": uniform(loc = 0.1, scale = 0.9),
-              "min_samples_split": randint(2, 11),
-              "min_samples_leaf": randint(1, 11),
-              'learning_rate': uniform(loc = 0.01, scale = 0.09)}
-n_iter_search = 100
-random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=n_iter_search)
-start = time()
-random_search.fit(np_x, np_y.ravel())
-print("RandomizedSearchCV took %.2f seconds for %d candidates"
-      " parameter settings." % ((time() - start), n_iter_search))
-
-cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimator_)
-
-print (random_search.grid_scores_)
-
-# # plt.plot(train.groupby(['Year', 'Month', 'Week']).sum()['Sales'])
-
-
-
-
-test = read_test_df()  # test df has first column Id
-test = set_weeks(test)
-
-
-# store = pd.read_csv("data/store.csv")
-
-# print(store.shape)
-# print (store.head(5))
-# print (store.dtypes)
-
-# store['PromoInterval'].str.split(',')
-# test = pd.read_csv("../input/test.csv")
-
-
-# print(train.describe())
-# print(train.shape)
-# print(store.shape)
-# print (store.head(5))
-# print (train.columns)
-# print (train.dtypes)
-# print(test.shape)
-# print (train.head(5))
-# print (train['Date'][0])
-
-# print (train['Store'].nunique())
-# print (train['Date'].unique())
