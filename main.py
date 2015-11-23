@@ -159,29 +159,35 @@ def str_month_to_int(str_val):
         return str_val
 
 
+def read_store_df():
+    df = pd.read_csv("data/store.csv")
+    df.loc[df['CompetitionDistance'].isnull(), 'CompetitionDistance'] = df['CompetitionDistance'].mean().round()
+    df.loc[814, 'CompetitionOpenSinceYear'] = df['CompetitionOpenSinceYear'].mean().round()
+    df['StoreType'] = df['StoreType'].apply(categorical_value_handler)
+    df['Assortment'] = df['Assortment'].apply(categorical_value_handler)
+    return df
+
+
 train = read_train_df()
 train = set_weeks(train)
 
+store = read_store_df()
 
-store = pd.read_csv("data/store.csv")
-store['StoreType'] = store['StoreType'].apply(categorical_value_handler)
-store['Assortment'] = store['Assortment'].apply(categorical_value_handler)
 train['Promo2'] = 0
 train['StoreType'] = 0
 train['Assortment'] = 0
 train['CompetitionDistance'] = 0
-
-for i in store.columns:
-    print (i, store[i].unique()[:10])
+train['HasCompetitor'] = -1
+train['CompetingMonths'] = 0
 
 
 for row in store.itertuples():
-    id =  row[1]
+    id = row[1]
     print (id)
-    mask = (train['Store'] == id)
+    mask = train['Store'] == id
 
-    storeType =  row[2]
-    assort =  row[3]
+    storeType = row[2]
+    assort = row[3]
     train.loc[mask, 'StoreType'] = storeType
     train.loc[mask, 'Assortment'] = assort
 
@@ -189,10 +195,23 @@ for row in store.itertuples():
     comp_month = row[5]
     comp_year = row[6]
 
-    train.loc[mask, 'Assortment'] = assort
-
-
     train.loc[mask, 'CompetitionDistance'] = comp_distance
+
+    if not np.isnan(comp_month):
+
+        train.loc[mask, 'CompetingMonths'] = \
+            train.loc[mask, ['Year', 'Month']].apply(lambda row: (row['Year'] - comp_year) * 12 + row['Month'] - comp_month, axis=1)
+
+        if comp_year < 2013:
+            maskc = mask
+        else:
+            mask1c = (mask) & (train['Year'] == comp_year) & (train['Month'] >= comp_month)
+            mask2c = (mask) & (train['Year'] > comp_year)
+            maskc = mask1c | mask2c
+
+        train.loc[maskc, 'HasCompetitor'] = 1
+    else:
+        train.loc[mask, 'CompetingMonths'] = 0
 
 
 
@@ -202,27 +221,25 @@ for row in store.itertuples():
     interval = row[10]
 
     if has_promo2:
-        if promo2year > 2012:
-            mask1 = (train['Store'] == id) & (train['Year'] == promo2year) & (train['Week'] == promo2week)
-            mask2 = (train['Store'] == id) & (train['Year'] > promo2year)
-            mask = mask1 & mask2
+        if promo2year < 2013:
+            maskp = mask
+        else:
+            mask1p = (mask) & (train['Year'] == promo2year) & (train['Week'] >= promo2week)
+            mask2p = (mask) & (train['Year'] > promo2year)
+            maskp = mask1p | mask2p
 
         for m in interval.split(','):
             pm = str_month_to_int(m)
-            train.loc[(mask) & (train['Month'] == pm), 'Promo2'] = 1
+            train.loc[(maskp) & (train['Month'] == pm), 'Promo2'] = 1
 
 
 
 
-
+# store['CompetitionDistance'].hist(bins=100)
 
     # Promo2 periods  #convert to promo2 column in train
     # competitors #competitor since months to today #has_competitor for each day{0,1} #distance {far, near, close}
 
-
-aa = store.itertuples()
-row = next(aa)
-print (row)
 
 col_x = np.delete(train.columns, [2, 3, 10])  # 2 : Sales, 3 : Customers, 10 : NWeek
 
@@ -230,10 +247,7 @@ np_x = train.as_matrix(columns=col_x)
 np_weekInd = train.as_matrix(columns=['NWeek'])
 np_y = train.as_matrix(columns=['Sales'])
 
-
-cross_validate(np_x, np_y, np_weekInd, 10)
-
-clf = ensemble.GradientBoostingRegressor(n_estimators=100)
+clf = ensemble.GradientBoostingRegressor(n_estimators=300)
 param_dist = {"max_depth": randint(3, 7),
               "max_features": uniform(loc = 0.1, scale = 0.9),
               "min_samples_split": randint(2, 11),
@@ -245,7 +259,6 @@ start = time()
 random_search.fit(np_x, np_y.ravel())
 print("RandomizedSearchCV took %.2f seconds for %d candidates"
       " parameter settings." % ((time() - start), n_iter_search))
-
 
 
 cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimator_)
