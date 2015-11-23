@@ -168,6 +168,74 @@ def read_store_df():
     return df
 
 
+
+def merge_df(t, s):
+    for row in s.itertuples():
+        id = row[1]
+        print (id)
+        mask = t['Store'] == id
+
+        storeType = row[2]
+        assort = row[3]
+        t.loc[mask, 'StoreType'] = storeType
+        t.loc[mask, 'Assortment'] = assort
+
+        comp_distance = row[4]
+        comp_month = row[5]
+        comp_year = row[6]
+
+        t.loc[mask, 'CompetitionDistance'] = comp_distance
+
+        if not np.isnan(comp_month):
+
+            t.loc[mask, 'CompetingMonths'] = \
+                t.loc[mask, ['Year', 'Month']].apply(lambda row: (row['Year'] - comp_year) * 12 + row['Month'] - comp_month, axis=1)
+
+            if comp_year < 2013:
+                maskc = mask
+            else:
+                mask1c = (mask) & (t['Year'] == comp_year) & (t['Month'] >= comp_month)
+                mask2c = (mask) & (t['Year'] > comp_year)
+                maskc = mask1c | mask2c
+
+            t.loc[maskc, 'HasCompetitor'] = 1
+        else:
+            t.loc[mask, 'HasCompetitor'] = 0
+
+
+
+        has_promo2 = row[7]
+        promo2week = row[8]
+        promo2year = row[9]
+        interval = row[10]
+
+        if has_promo2:
+            if promo2year < 2013:
+                maskp = mask
+            else:
+                mask1p = (mask) & (t['Year'] == promo2year) & (t['Week'] >= promo2week)
+                mask2p = (mask) & (t['Year'] > promo2year)
+                maskp = mask1p | mask2p
+
+            for m in interval.split(','):
+                pm = str_month_to_int(m)
+                t.loc[(maskp) & (t['Month'] == pm), 'Promo2'] = 1
+
+    # Promo2 periods  #convert to promo2 column in train
+    # competitors #competitor since months to today #has_competitor for each day{0,1} #distance {far, near, close}
+
+    return t
+
+
+def read_test_df():
+    t = pd.read_csv("data/test.csv")
+    t = process_date(t)
+    t = data_cleaning(t)
+    t.loc[t['Open'].isnull(), 'Open'] = 1
+    return t
+
+
+
 train = read_train_df()
 train = set_weeks(train)
 
@@ -181,64 +249,12 @@ train['HasCompetitor'] = -1
 train['CompetingMonths'] = 0
 
 
-for row in store.itertuples():
-    id = row[1]
-    print (id)
-    mask = train['Store'] == id
-
-    storeType = row[2]
-    assort = row[3]
-    train.loc[mask, 'StoreType'] = storeType
-    train.loc[mask, 'Assortment'] = assort
-
-    comp_distance = row[4]
-    comp_month = row[5]
-    comp_year = row[6]
-
-    train.loc[mask, 'CompetitionDistance'] = comp_distance
-
-    if not np.isnan(comp_month):
-
-        train.loc[mask, 'CompetingMonths'] = \
-            train.loc[mask, ['Year', 'Month']].apply(lambda row: (row['Year'] - comp_year) * 12 + row['Month'] - comp_month, axis=1)
-
-        if comp_year < 2013:
-            maskc = mask
-        else:
-            mask1c = (mask) & (train['Year'] == comp_year) & (train['Month'] >= comp_month)
-            mask2c = (mask) & (train['Year'] > comp_year)
-            maskc = mask1c | mask2c
-
-        train.loc[maskc, 'HasCompetitor'] = 1
-    else:
-        train.loc[mask, 'CompetingMonths'] = 0
-
-
-
-    has_promo2 = row[7]
-    promo2week = row[8]
-    promo2year = row[9]
-    interval = row[10]
-
-    if has_promo2:
-        if promo2year < 2013:
-            maskp = mask
-        else:
-            mask1p = (mask) & (train['Year'] == promo2year) & (train['Week'] >= promo2week)
-            mask2p = (mask) & (train['Year'] > promo2year)
-            maskp = mask1p | mask2p
-
-        for m in interval.split(','):
-            pm = str_month_to_int(m)
-            train.loc[(maskp) & (train['Month'] == pm), 'Promo2'] = 1
-
+train = merge_df(train, store)
 
 
 
 # store['CompetitionDistance'].hist(bins=100)
 
-    # Promo2 periods  #convert to promo2 column in train
-    # competitors #competitor since months to today #has_competitor for each day{0,1} #distance {far, near, close}
 
 
 col_x = np.delete(train.columns, [2, 3, 10])  # 2 : Sales, 3 : Customers, 10 : NWeek
@@ -246,6 +262,8 @@ col_x = np.delete(train.columns, [2, 3, 10])  # 2 : Sales, 3 : Customers, 10 : N
 np_x = train.as_matrix(columns=col_x)
 np_weekInd = train.as_matrix(columns=['NWeek'])
 np_y = train.as_matrix(columns=['Sales'])
+
+
 
 clf = ensemble.GradientBoostingRegressor(n_estimators=300)
 param_dist = {"max_depth": randint(3, 7),
@@ -265,3 +283,21 @@ cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimato
 
 
 
+test = read_test_df()
+
+test.loc[test['Open'].isnull(), 'Open'] = 1
+
+test['Promo2'] = 0
+test['StoreType'] = 0
+test['Assortment'] = 0
+test['CompetitionDistance'] = 0
+test['HasCompetitor'] = -1
+test['CompetingMonths'] = 0
+
+test = merge_df(test, store)
+
+for col in test.columns:
+    print (col, test[col].unique()[:10])
+
+col_x = np.delete(test.columns, [0, 3])  # 0 : Id, 3 : Open
+np_x_test = test.as_matrix(columns=col_x)
