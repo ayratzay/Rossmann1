@@ -7,6 +7,11 @@ from time import time
 import numpy as np
 
 def process_date(df):
+    """
+    initial train data engineering
+    :param df: pandas dataframe
+    :return: pandas dataframe
+    """
     df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
     df['Year'] = df['Date'].apply(lambda x: x.year)
     df['Month'] = df['Date'].apply(lambda x: x.month)
@@ -120,14 +125,15 @@ def cross_validate(x, y, nweeks, cv_number, estimator = False):
         X_test, y_test =  x[test_mask], y[test_mask].ravel()
 
         if not estimator:
-            clf = ensemble.GradientBoostingRegressor(n_estimators=20) # more is better
+            clf = ensemble.GradientBoostingRegressor(n_estimators=100) # more is better
         else:
             clf = estimator
         clf.fit(X_train, y_train)
         RMSPE_cv = rmspe(clf.predict(X_test), y_test)
         RMSPE.append(RMSPE_cv)
-        print (X_test[0, -3:], X_test[-1, -3:], RMSPE_cv)
-    print("RMSPE: %.4f" % np.mean(RMSPE))
+        print (np.mean(clf.predict(X_test)), np.std(clf.predict(X_test)), np.mean(clf.predict(y_test)), np.std(clf.predict(y_test)))
+        print ([int(i) for i in X_test[0, [5,6,7]]], [int(i) for i in X_test[-1, [5,6,7]]], RMSPE_cv)
+    print("RMSPE: %.4f +- %.4f" % np.mean(RMSPE), 2 * np.mean(RMSPE))
 
 
 def str_month_to_int(str_val):
@@ -265,21 +271,43 @@ np_y = train.as_matrix(columns=['Sales'])
 
 
 
-clf = ensemble.GradientBoostingRegressor(n_estimators=300)
-param_dist = {"max_depth": randint(3, 7),
-              "max_features": uniform(loc = 0.1, scale = 0.9),
-              "min_samples_split": randint(2, 11),
-              "min_samples_leaf": randint(1, 11),
-              'learning_rate': uniform(loc = 0.01, scale = 0.09)}
-n_iter_search = 100
-random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=n_iter_search)
-start = time()
-random_search.fit(np_x, np_y.ravel())
-print("RandomizedSearchCV took %.2f seconds for %d candidates"
-      " parameter settings." % ((time() - start), n_iter_search))
+# clf = ensemble.GradientBoostingRegressor(n_estimators=300)
+# param_dist = {"max_depth": randint(3, 7),
+#               "max_features": uniform(loc = 0.1, scale = 0.9),
+#               "min_samples_split": randint(2, 11),
+#               "min_samples_leaf": randint(1, 11),
+#               'learning_rate': uniform(loc = 0.01, scale = 0.09)}
+# n_iter_search = 100
+# random_search = RandomizedSearchCV(clf, param_distributions=param_dist, n_iter=n_iter_search)
+# start = time()
+# random_search.fit(np_x, np_y.ravel())
+# print("RandomizedSearchCV took %.2f seconds for %d candidates"
+#       " parameter settings." % ((time() - start), n_iter_search))
+#
+#
+# cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimator_)
+
+col_x = np.delete(train.columns, [2, 3, 10])  # 2 : Sales, 3 : Customers, 10 : NWeek
+
+np_x = train.as_matrix(columns=col_x)
+np_weekInd = train.as_matrix(columns=['NWeek'])
+np_y = train.as_matrix(columns=['Sales'])
 
 
-cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimator_)
+clf = ensemble.GradientBoostingRegressor(n_estimators=1000,
+                                         max_depth=5,
+                                         max_features=5,
+                                         min_samples_split=6,
+                                         min_samples_leaf=6,
+                                         learning_rate=0.1, loss='ls')
+cross_validate(np_x, np_y, np_weekInd, 10, estimator=clf)
+
+clf.feature_importances_
+
+from sklearn.ensemble.partial_dependence import plot_partial_dependence
+features = [0,1,(0, 1)]
+plot_partial_dependence(clf, np_x, features)
+
 
 
 
