@@ -7,7 +7,7 @@ def process_date(df):
     df['Year'] = df['Date'].apply(lambda x: x.year)
     df['Month'] = df['Date'].apply(lambda x: x.month)
     df['Week'] = df['Date'].apply(lambda x: x.week)
-    df = df.drop(['Date'], axis = 1)
+    df = df.drop(['Date'], axis=1)
     return df
 
 
@@ -33,11 +33,11 @@ def data_cleaning(df):
     return df
 
 
-#If store is closed, sales will be always zero.
-#Unless we have not found any other utilization of this information,
-#I will drop all rows using mask train['Open'] == 0 and 'Open' column
-#Also we should add to preprocess of test data same logic,
-#for mask test['Open'] == 0 test['Sales'] = 0
+# If store is closed, sales will be always zero.
+# Unless we have not found any other utilization of this information,
+# I will drop all rows using mask train['Open'] == 0 and 'Open' column
+# Also we should add to preprocess of test data same logic,
+# for mask test['Open'] == 0 test['Sales'] = 0
 #
 # Do we need assume 0 for this
 # column Open in test data file for store 622 is blank
@@ -45,7 +45,7 @@ def data_cleaning(df):
 
 def drop_closed_days_rows(t):
     t = t[t['Open'] != 0]
-    t = t.drop(['Open'], axis = 1)
+    t = t.drop(['Open'], axis=1)
     return t
 
 
@@ -155,7 +155,8 @@ def merge_df(t, s):
         if not np.isnan(comp_month):
 
             t.loc[mask, 'CompetingMonths'] = \
-                t.loc[mask, ['Year', 'Month']].apply(lambda row: (row['Year'] - comp_year) * 12 + row['Month'] - comp_month, axis=1)
+                t.loc[mask, ['Year', 'Month']].apply(
+                    lambda row: (row['Year'] - comp_year) * 12 + row['Month'] - comp_month, axis=1)
 
             if comp_year < 2013:
                 maskc = mask
@@ -167,8 +168,6 @@ def merge_df(t, s):
             t.loc[maskc, 'HasCompetitor'] = 1
         else:
             t.loc[mask, 'HasCompetitor'] = 0
-
-
 
         has_promo2 = row[7]
         promo2week = row[8]
@@ -204,11 +203,10 @@ def get_dummies(t):
     cm_df = pd.get_dummies(t['CompetingMonths'], prefix='CM')
     hc_df = pd.get_dummies(t['HasCompetitor'], prefix='HC')
 
-
-    t = t.drop(['DayOfWeek', 'StateHoliday', 'Year', 'Month', 'StoreType', 'Assortment', 'CompetitionDistance', 'CompetingMonths', 'HasCompetitor'], axis = 1)
-    t = pd.concat([t, dow_df, sh_df, year_df, month_df, st_df, as_df, cd_df, cm_df, hc_df], axis =1)
+    t = t.drop(['DayOfWeek', 'StateHoliday', 'Year', 'Month', 'StoreType', 'Assortment', 'CompetitionDistance',
+                'CompetingMonths', 'HasCompetitor'], axis=1)
+    t = pd.concat([t, dow_df, sh_df, year_df, month_df, st_df, as_df, cd_df, cm_df, hc_df], axis=1)
     return t
-
 
 
 train = read_train_df()
@@ -229,9 +227,7 @@ train[u'CompetitionDistance'] = train[u'CompetitionDistance'].apply(dist_to_int)
 train[u'CompetingMonths'] = train[u'CompetingMonths'].apply(month_to_int)
 train = get_dummies(train)
 
-
 col_x = np.delete(train.columns, [1, 2, 6])  # 2 : Sales, 3 : Customers, 6 : NWeek
 train[col_x].to_csv('pickle_cellar/train_full_x.csv', index=False)
 train['NWeek'].to_csv('pickle_cellar/train_weekind.csv', index=False)
 train['Sales'].to_csv('pickle_cellar/train_full_y.csv', index=False)
-

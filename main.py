@@ -7,7 +7,7 @@ import pickle
 import time
 
 def train_model(params, X, y):
-    model = ensemble.GradientBoostingRegressor(**param_grid)
+    model = ensemble.GradientBoostingRegressor(**params)
     model.fit(X, y)
     return model
 
@@ -30,13 +30,13 @@ np_x_nr, np_y_nr = np_x[np.in1d(np_x[:, 0], nr_list), :], np_y[np.in1d(np_x[:, 0
 np_x_oe, np_y_oe = np_x[np.in1d(np_x[:, 0], oe_list), :], np_y[np.in1d(np_x[:, 0], oe_list)]
 np_x_ue, np_y_ue = np_x[np.in1d(np_x[:, 0], ue_list), :], np_y[np.in1d(np_x[:, 0], ue_list)]
 
-
+X_train, X_test, y_train, y_test = train_test_split(np_x, np_y)
 X_train_nr, X_test_nr, y_train_nr, y_test_nr = train_test_split(np_x_nr, np_y_nr)
 X_train_oe, X_test_oe, y_train_oe, y_test_oe = train_test_split(np_x_oe, np_y_oe)
 X_train_ue, X_test_ue, y_train_ue, y_test_ue = train_test_split(np_x_ue, np_y_ue)
 
 
-param_grid = {'n_estimators': 1000,
+param_grid = {'n_estimators': 500,
               'max_depth': 6,
               'max_features': 'auto',
               'min_samples_split': 3,
@@ -45,6 +45,9 @@ param_grid = {'n_estimators': 1000,
               'subsample': 0.5,
               'loss': 'ls'}
 
+print ('started at '  + time.strftime("%X"))
+clf = train_model(param_grid, X_train, y_train)
+print ('clf_is ready on '  + time.strftime("%X"))
 
 print ('started at '  + time.strftime("%X"))
 clf_oe = train_model(param_grid, X_train_oe, y_train_oe)
@@ -54,55 +57,48 @@ print ('clf_ue is ready on '  + time.strftime("%X"))
 clf_nr = train_model(param_grid, X_train_nr, y_train_nr)
 print ('clf_nr is ready on '  + time.strftime("%X"))
 
-#
-# n_estimators = len(clf_oe.estimators_)
-#
-# test_dev = np.empty(n_estimators)
-#
-# for i, pred in enumerate(clf_oe.staged_predict(X_test_oe)):
-#     test_dev[i] = clf_oe.loss_(y_test_oe, pred)
-#
-# plt.plot(test_dev)
+
+# from sklearn.externals import joblib
+# joblib.dump(clf, 'filename.pkl')
+
+
+n_estimators = len(clf_nr.estimators_)
+test_dev = np.empty(n_estimators)
+for i, pred in enumerate(clf_nr.staged_predict(X_test_nr)):
+    test_dev[i] = clf_nr.loss_(y_test_nr, pred)
+plt.plot(test_dev)
+
+n_estimators = len(clf_ue.estimators_)
+test_dev = np.empty(n_estimators)
+for i, pred in enumerate(clf_ue.staged_predict(X_test_ue[:18679,:])):
+    test_dev[i] = clf_ue.loss_(y_test_ue[:18679], pred)
+plt.plot(test_dev)
+
+n_estimators = len(clf_oe.estimators_)
+test_dev = np.empty(n_estimators)
+for i, pred in enumerate(clf_oe.staged_predict(X_test_oe[:18679,:])):
+    test_dev[i] = clf_oe.loss_(y_test_oe[:18679], pred)
+plt.plot(test_dev)
 
 ##########################################
 ##### NOW WE WILL SUBMIT RESULT ##########
 ##########################################
 
-test = read_test_df()
-test.loc[test['Open'].isnull(), 'Open'] = 1
+test = pd.read_csv('pickle_cellar/test_data.csv')
 
-test['Promo2'] = 0
-test['StoreType'] = 0
-test['Assortment'] = 0
-test['CompetitionDistance'] = 0
-test['HasCompetitor'] = -1
-test['CompetingMonths'] = 0
+results = []
+for row in test.itertuples(index=True):
+    index, line = row[0] + 1, np.array(row[1:]).reshape(1, -1)
+    if row[1] in nr_list:
+        results.append([index, float(clf_nr.predict(line))])
+    elif row[1] in ue_list:
+        results.append([index, float(clf_ue.predict(line))])
+    elif row[1] in oe_list:
+        results.append([index, float(clf_oe.predict(line))])
 
-test = merge_df(test, store)
-test.loc[test['CompetingMonths'] < 0, 'CompetingMonths'] = 0
+submission = pd.DataFrame(results, columns=["Id","Sales"])
+submission.to_csv('submissions/gb_idSplit_model.csv', index=False)
 
-test[u'CompetitionDistance'] = test[u'CompetitionDistance'].apply(dist_to_int)
-test[u'CompetingMonths'] = test[u'CompetingMonths'].apply(month_to_int)
-
-test = get_dummies(test)
-
-ndf = pd.DataFrame()
-for col in train.columns:
-    if col in test.columns:
-        ndf[col] = test[col]
-    else:
-        ndf[col] = 0
-
-# for col in test.columns:
-#     print (col, test[col].unique()[:10])
-
-col_x = np.delete(ndf.columns, [1, 2, 6])  # 0 : Id, 3 : Open
-np_x_test = ndf.as_matrix(columns=col_x)
-
-y_results = clf.predict(np_x_test)
-submition = pd.read_csv('data/sample_submission.csv')
-submition['Sales'] = y_results
-submition.to_csv('data/submission.csv', index=False)
 
 ######################################################
 ######## Creating new models for data ###############

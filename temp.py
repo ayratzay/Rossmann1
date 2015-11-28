@@ -14,12 +14,7 @@ from time import time
 
 
 
-def read_test_df():
-    t = pd.read_csv("data/test.csv")
-    t = process_date(t)
-    t = data_cleaning(t)
-    t.loc[t['Open'].isnull(), 'Open'] = 1
-    return t
+
 
 
 
