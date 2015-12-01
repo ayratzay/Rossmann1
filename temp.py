@@ -85,3 +85,91 @@ def cross_validate(x, y, nweeks, cv_number, estimator = False):
 #
 #
 # cross_validate(np_x, np_y, np_weekInd, 10, estimator=random_search.best_estimator_)
+
+train_x = pd.read_csv('pickle_cellar/train_full_x_1.csv')
+train_y = pd.read_csv('pickle_cellar/train_full_y.csv', header=None)
+
+
+np_x = train_x.as_matrix()
+np_y = train_y.as_matrix().ravel()
+
+
+
+X_train, X_test, y_train, y_test = train_test_split(np_x, np_y, test_size=0.8)
+
+
+
+param_grid = {'n_estimators': 5000, # 5000
+              'max_depth': 16,     # 16
+              # 'max_features': 14,  # 16
+              'min_samples_split': 20, #20 is just good
+              'min_samples_leaf': 3,  #3 is just good
+              'learning_rate': 0.01, # 0.01
+              'subsample': 0.8,     # 0.8
+              'loss': 'lad'}
+
+print ('started at '  + time.strftime("%X"))
+# clf = train_model(param_grid, X_train, y_train)
+clf = train_model(param_grid, np_x, np_y)
+print ('clf_is ready on '  + time.strftime("%X"))
+
+
+n_estimators = len(clf.estimators_)
+test_dev, train_dev = np.empty(n_estimators), np.empty(n_estimators)
+for i, pred in enumerate(clf.staged_predict(X_test)):
+    test_dev[i] = clf.loss_(y_test, pred)
+    train_dev[i] = clf.train_score_[i]
+plt.plot(test_dev, label="test error")
+plt.plot(train_dev, label="train error")
+plt.legend()
+
+aa = pd.DataFrame(clf.feature_importances_, index = [cols]).sort_values(by=0, axis=0, ascending=False)/clf.feature_importances_.max()
+aa.to_csv('feature_importance.csv')
+
+
+test_dev1 # 647 MAE 8, 0.7, 20, 3, 1, 1, no_get_dummies, extra features: Mean_Sales
+train_dev1
+
+test_dev2   # 3000, 8, 0.7, 20, 3, 0.1, 0.5 all data
+train_dev2
+
+plt.plot(test_dev2, label="test error")
+plt.plot(train_dev2, label="train error")
+plt.legend()
+
+
+test = pd.read_csv('pickle_cellar/test_data.csv')
+np_test_x = test.as_matrix()
+test_y_hat = clf.predict(np_test_x)
+ind = range(1, test_y_hat.shape[0] + 1)
+result = zip(ind, test_y_hat)
+submission = pd.DataFrame(result, columns=["Id","Sales"])
+submission.to_csv('submissions/gb_storeid_dow_model.csv', index=False)
+
+from sklearn.ensemble.partial_dependence import plot_partial_dependence
+from sklearn.ensemble.partial_dependence import partial_dependence
+
+for i in range(0, 16):
+    for t in range(0, 16):
+        if i != t:
+            fig, axs = plot_partial_dependence(clf, np_x, [(i,t)], feature_names=train_x.columns,
+                                   n_jobs=-1, grid_resolution=20)
+
+features = [3, 14, (3, 14)]
+fig, axs = plot_partial_dependence(clf, X_train, features, feature_names=train_x.columns,
+                                   n_jobs=-1, grid_resolution=20)
+
+
+from itertools import combinations
+aa = combinations(range(0, 16), 2)
+for i,t in aa:
+    fig, axs = plot_partial_dependence(clf, np_x, [(i,t)], feature_names=train_x.columns,
+                                   n_jobs=-1, grid_resolution=20)
+
+
+
+pred = clf.predict(X_test)
+new_df = np.hstack([X_test, y_test.reshape(y_test.shape[0], 1), pred.reshape(pred.shape[0], 1)])
+new_df = pd.DataFrame(new_df, columns=list(cols) + ['Sales', 'Pred'])
+new_df['delta'] = new_df['Sales'] - new_df['Pred']
+
